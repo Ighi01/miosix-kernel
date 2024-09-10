@@ -48,13 +48,12 @@ public:
         TouchUp=2,
         TouchMove=3,
         ButtonA=4,      // The "Key" or "User" button
-        ButtonB=5,      // The "Tamper" button
-        ButtonC=6,      // The "Wakeup" button
-        ButtonJoy=7,    // Center button on the joystick
-        ButtonUp=8,     // Up button on the joystick
-        ButtonDown=9,   // Down button on the joystick
-        ButtonLeft=10,  // Left button on the joystick
-        ButtonRight=11  // Right button on the joystick
+        ButtonJoy=5,    // Center button on the joystick
+        ButtonUp=6,     // Up button on the joystick
+        ButtonDown=7,   // Down button on the joystick
+        ButtonLeft=8,   // Left button on the joystick
+        ButtonRight=9,  // Right button on the joystick
+        None = 10
     };
 private:
     EventType();

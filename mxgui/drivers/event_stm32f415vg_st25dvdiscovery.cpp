@@ -46,27 +46,33 @@ static Semaphore touchIntSema;
 /**
  * Touchscreen interrupt
  */
-void __attribute__((naked)) EXTI2_IRQHandler()
+void __attribute__((naked)) EXTI9_5_IRQHandler()
 {
     saveContext();
-    asm volatile("bl EXTI2HandlerImpl");
+    asm volatile("bl EXTI9_5_HandlerImpl");
     restoreContext();
 }
 
 /**
  * Touchscreen interrupt actual implementation
  */
-extern "C" void __attribute__((used)) EXTI2HandlerImpl()
+extern "C" void __attribute__((used)) EXTI9_5_HandlerImpl()
 {
-    EXTI->PR = EXTI_PR_PR2; 
+    EXTI->PR = EXTI_PR_PR5;
     touchIntSema.IRQsignal();
 }
 
 namespace mxgui {
 
-typedef Gpio<GPIOB_BASE, 8> scl;
-typedef Gpio<GPIOB_BASE, 9> sda;
-typedef Gpio<GPIOI_BASE, 2> interrupt;
+typedef Gpio<GPIOC_BASE,14> buttonKey;
+typedef Gpio<GPIOE_BASE,8> joySel;
+typedef Gpio<GPIOE_BASE,9> joyLeft;
+typedef Gpio<GPIOE_BASE,10> joyRight;
+typedef Gpio<GPIOE_BASE,11> joyUp;
+typedef Gpio<GPIOE_BASE,12> joyDown;
+typedef Gpio<GPIOB_BASE, 6> scl;
+typedef Gpio<GPIOB_BASE, 7> sda;
+typedef Gpio<GPIOI_BASE, 5> interrupt;
 
 typedef SoftwareI2C<sda, scl> ioExtI2C;
 
@@ -74,7 +80,7 @@ typedef SoftwareI2C<sda, scl> ioExtI2C;
  * The registers of the stmpe811 touchscreen controller
  */
 enum stmpe811regs
-{    
+{   
     SYS_CTRL1=0x03,
     SYS_CTRL2=0x04,
     INT_CTRL=0x09,
@@ -87,16 +93,10 @@ enum stmpe811regs
     INT_STA=0x0B,
     TSC_CTRL=0x40,
     TSC_CFG=0x41,
-    WDW_TR_X=0x42,
-    WDW_TR_Y=0x44,
-    WDW_BL_X=0x46,
-    WDW_BL_Y=0x48,
-    FIFO_TH=0x4A,
-    FIFO_STA=0x4B,
-    FIFO_SIZE=0x4C,
-    TSC_DATA_XYZ=0x52,
-    TSC_I_DRIVE=0x58,
-    TSC_SHIELD=0x59
+    FIFO_TH=0x4a,
+    FIFO_STA=0x4b,
+    TSC_DATA_XYZ=0xd7,
+    FIFO_SIZE=0x4C
 };
 
 template <class I2C, int Addr>
@@ -168,15 +168,23 @@ public:
  
     void initTouch()
     {
-        writeReg(TSC_CFG, 0xE4);  // Configuration: AVE=8, TDD=1ms, SETTLING=5ms
-        writeReg(FIFO_TH, 0x01);  // FIFO threshold for interrupt
+        //Total time to read the touchscreen is
+        //TDD*2+SETTLING*3+AVE*17.2us*3= ~ 17.5ms
+        writeReg(TSC_CFG,0xe4); //TSC_CFG= AVE=8, TDD=1ms, SETTLING=5ms
+        writeReg(FIFO_TH,0x01); //FIFO_TH= 1
         touchFifoClear();
         
-        writeReg(INT_CTRL, 0x01);  // Allow chip to exit hibernate on touch
-        writeReg(INT_EN, 0x03);    // Enable touch detection interrupt
+        //This may allow the chip to go out of hibernate once touch detected
+        writeReg(INT_CTRL,0x01);
+        writeReg(INT_EN,0x03);
 
-        writeReg(TSC_CTRL, 0b01100101);  // Mode: X, Y, Z acquisition, tracking index 16, enabled
-        writeReg(TSC_I_DRIVE, 0x01);     // Set 50 mA drive current for touchscreen drivers
+        // TSC_CTRL values:
+        // 1     bit 0     enabled: yes
+        // 001   bit 1:3   TSC mode: X, Y only
+        // 011   bit 4:6   tracking index (minimum ADC delta for triggering move): 16
+        // 0     bit 7     TSC status (read only)
+        writeReg(TSC_CTRL,0b0'011'001'1);
+        writeReg(FIFO_TH,0x01);
     }
 
 
@@ -243,25 +251,6 @@ public:
     }
 
     /**
-     * Set the specified pins to GPIO alternate function.
-     * @param gpioMask Mask specifying which pins need to be used as GPIO.
-     */
-    void initGPIO(uint8_t gpioMask)
-    {
-        writeReg(GPIO_ALT_FUNC, gpioMask);
-    }
-
-    /**
-     * Configure in/out direction of GPIO pins.
-     * @param outputMask Mask specifying which pins are set as output
-     * (all others are set as inputs).
-     */
-    void setGPIODir(unsigned char outputMask)
-    {
-        writeReg(GPIO_DIR, outputMask);
-    }
-
-    /**
      * Get GPIO pin state
      * @returns Bitmask with the state of each pin (1 for high, 0 for low)
      */
@@ -277,7 +266,6 @@ private:
 };
 
 static STMPE811<ioExtI2C, 0x82> touchCtrl;
-static STMPE811<ioExtI2C, 0x88> joyCtrl;
 
 static Queue<Event,10> eventQueue;
 static std::function<void ()> eventCallback;
@@ -321,6 +309,7 @@ static void waitForTouchOrButton()
 
 static void eventThread(void *)
 {
+    ButtonState<EventType::ButtonA> aButton;
     ButtonState<EventType::ButtonJoy> joyButton;
     ButtonState<EventType::ButtonUp> upButton;
     ButtonState<EventType::ButtonDown> downButton;
@@ -331,13 +320,12 @@ static void eventThread(void *)
     for(;;)
     {
         waitForTouchOrButton();
-
-        unsigned char extButtons=joyCtrl.getGPIOState();
-        joyButton.update(!(extButtons & 0b10000000));
-        downButton.update(!(extButtons & 0b01000000));
-        leftButton.update(!(extButtons & 0b00100000));
-        rightButton.update(!(extButtons & 0b00010000));
-        upButton.update(!(extButtons & 0b00001000));
+        aButton.update(!buttonKey::value());
+        joyButton.update(!joySel::value());
+        downButton.update(!joyDown::value());
+        leftButton.update(!joyLeft::value());
+        rightButton.update(!joyRight::value());
+        upButton.update(!joyUp::value());
 
         //Check touchscreen
         Point p=touchCtrl.getTouchData();
@@ -373,29 +361,29 @@ InputHandlerImpl::InputHandlerImpl()
 {
     {
         FastInterruptDisableLock dLock;
+        buttonKey::mode(Mode::INPUT);
         interrupt::mode(Mode::INPUT);
+        joySel::mode(Mode::INPUT);
+        joyDown::mode(Mode::INPUT);
+        joyLeft::mode(Mode::INPUT);
+        joyRight::mode(Mode::INPUT);
         ioExtI2C::init();
     }
 
     // Init the touchscreen controller
     touchCtrl.init();
     touchCtrl.initTouch();
-
-    // Init the second STMPE811 which is just used for more buttons. (bother!)
-    joyCtrl.init();
-    joyCtrl.setGPIODir(0b00000000); // everything as input
-    joyCtrl.initGPIO(0b11111000);
    
     // Turn on SYSCFG peripheral
     RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
     RCC_SYNC();
 
     // Configure touchscreen interrupt
-    SYSCFG->EXTICR[0] = (SYSCFG->EXTICR[0] & ~SYSCFG_EXTICR1_EXTI2_Msk) | (8 << SYSCFG_EXTICR1_EXTI2_Pos);
-    EXTI->IMR |= EXTI_IMR_MR2;
-    EXTI->FTSR |= EXTI_FTSR_TR2;
-    NVIC_EnableIRQ(EXTI2_IRQn);
-    NVIC_SetPriority(EXTI2_IRQn,15); //Low priority
+    SYSCFG->EXTICR[1] = (SYSCFG->EXTICR[1] & ~SYSCFG_EXTICR2_EXTI5_Msk) | (8 << SYSCFG_EXTICR2_EXTI5_Pos);
+    EXTI->IMR |= EXTI_IMR_MR5;
+    EXTI->FTSR |= EXTI_FTSR_TR5;
+    NVIC_EnableIRQ(EXTI9_5_IRQn);
+    NVIC_SetPriority(EXTI9_5_IRQn,15); //Low priority
 
     //Note that this class is instantiated only once. Otherwise
     //we'd have to think a way to avoid creating multiple threads
@@ -413,7 +401,11 @@ Event InputHandlerImpl::popEvent()
 {
     FastInterruptDisableLock dLock;
     Event result;
-    if(eventQueue.isEmpty()==false) eventQueue.IRQget(result);
+    if(eventQueue.isEmpty() == false) {
+        eventQueue.IRQget(result);
+    } else {
+        result = Event(EventType::None);
+    }
     return result;
 }
 
