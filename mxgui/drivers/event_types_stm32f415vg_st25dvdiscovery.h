@@ -38,10 +38,10 @@ public:
     {
         // These are a must on all backends -- begin
         Default=0,           // This actually means 'no event'
-        WindowPartialRedraw=12, // At least one drawable has requested redraw
-        WindowForeground=13,    // Window manager moved this window to foreground
-        WindowBackground=14,    // Window manager moved this window to background
-        WindowQuit=15,          // Window manager requested the window to close
+        WindowPartialRedraw=17, // At least one drawable has requested redraw
+        WindowForeground=18,    // Window manager moved this window to foreground
+        WindowBackground=19,    // Window manager moved this window to background
+        WindowQuit=20,          // Window manager requested the window to close
         // These are a must on all backends -- end
         
         TouchDown=1,
@@ -53,7 +53,15 @@ public:
         ButtonDown=7,   // Down button on the joystick
         ButtonLeft=8,   // Left button on the joystick
         ButtonRight=9,  // Right button on the joystick
-        None = 10
+        None = 10,
+        ButtonADown=11,      // The "Key" or "User" button become pressed
+        ButtonJoyDown=12,    // Center button on the joystick become pressed
+        ButtonUpDown=13,     // Up button on the joystick become pressed
+        ButtonDownDown=14,   // Down button on the joystick become pressed
+        ButtonLeftDown=15,   // Left button on the joystick become pressed
+        ButtonRightDown=16,  // Right button on the joystick become pressed
+
+
     };
 private:
     EventType();

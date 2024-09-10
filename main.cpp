@@ -41,30 +41,31 @@ struct ColorArea {
     unsigned short x1, y1, x2, y2; 
 };
 
+struct InvalidArea{    
+    unsigned short x1, y1, x2, y2; 
+};
+
 class SimonGame {
 private:
     Display& display;
     InputHandler& inputHandler;
-    std::vector<Color> sequence;
+    std::vector<int> sequence;
     std::vector<ColorArea> areas;    
     int baseDelay = 3000;
-    int minDelay = 100;
-    Color colorMap[4] = {red, green, blue, white}; 
+    int minDelay = 100; 
+    std::vector<InvalidArea> invalidAreas;  
     
-    void fillRectangle(Point p1, Point p2, Color color) {
+    void fillRectangle(ColorArea colorArea) {
         DrawingContext dc(display);
-        for (int y = p1.y(); y <= p2.y(); ++y) {
-            dc.line(Point(p1.x(), y), Point(p2.x(), y), color);
+        for (int y = colorArea.y1; y <= colorArea.y2; ++y) {
+            dc.line(Point(colorArea.x1, y), Point(colorArea.x2, y), colorArea.color);
         }
     }
 
     void drawAllAreas() {
-        {
-            DrawingContext dc(display);
-            for (int i = 0; i < 4; ++i) {
-                ColorArea area = areas[i];
-                fillRectangle(Point(area.x1, area.y1), Point(area.x2, area.y2), colorMap[i]);
-            }
+        DrawingContext dc(display);
+        for (ColorArea colorArea : areas) {
+            fillRectangle(colorArea);
         }
     }
 
@@ -86,19 +87,21 @@ private:
                 break;
             }
         }
-        drawAllAreas();        
+
+        drawAllAreas();
+
         {
             DrawingContext dc(display);
             dc.setTextColor(white, black);
             dc.setFont(tahoma); 
             
             dc.write(Point(display.getWidth() / 2 - 47, display.getHeight() / 2 - 10), "SIMON SAYS GAME");
-            dc.write(Point(display.getWidth() / 2 - 32, display.getHeight() / 2 + 10), "Scroll to start");
+            dc.write(Point(display.getWidth() / 2 - 72, display.getHeight() / 2 + 10), "Scroll or press button to start");
         }
         
         for (;;) {
             Event e = inputHandler.popEvent();
-            if (e.getEvent() == EventType::TouchMove) {
+            if (e.getEvent() == EventType::TouchMove || e.getEvent() == EventType::ButtonJoy || e.getEvent() == EventType::ButtonA) {
                 DrawingContext dc(display);
                 miosix::delayMs(1000);
                 dc.clear(black);
@@ -107,18 +110,15 @@ private:
         }
     }
 
-    void displayColor(Color color) {
-        Color flashColor = colorMap[static_cast<int>(color)];
-        ColorArea area = areas[static_cast<int>(color)];
-
-        fillRectangle(Point(area.x1, area.y1), Point(area.x2, area.y2), flashColor);
+    void displayColor(int color) {
+        ColorArea area = areas[color];
+        fillRectangle(area);
     }
     
     void displaySequence() {
         int delay = max(minDelay, baseDelay - static_cast<int>(sequence.size() * 200));
-
         miosix::delayMs(200);
-        for (Color color : sequence) {
+        for (int color : sequence) {
             DrawingContext dc(display);
             dc.clear(black);
             miosix::delayMs(100);
@@ -126,6 +126,13 @@ private:
             miosix::delayMs(delay);
         }
     }
+
+    Point getCenter(ColorArea colorArea) {
+        unsigned short centerX = (colorArea.x1 + colorArea.x2) / 2;
+        unsigned short centerY = (colorArea.y1 + colorArea.y2) / 2;
+        return Point(centerX, centerY); 
+    }
+
 
     Point handleTouch(){
         for (;;) {            
@@ -141,7 +148,38 @@ private:
             { 
                 case EventType::TouchDown:
                 {
-                    return e.getPoint();
+                    Point touchedPoint = e.getPoint();
+                    bool isInvalid = false;
+                    for(InvalidArea invalidArea : invalidAreas){
+                        if (touchedPoint.x() >= invalidArea.x1 && touchedPoint.x() <= invalidArea.x2 && touchedPoint.y() >= invalidArea.y1 && touchedPoint.y() <= invalidArea.y2){
+                            isInvalid = true;
+                            break;
+                        }
+                    }
+                    if(!isInvalid){
+                        return e.getPoint();
+                    }
+                    break;
+                }
+                case EventType::ButtonUpDown:
+                {
+                    return getCenter(areas[3]);
+                    break;
+                }
+                case EventType::ButtonDownDown:
+                {
+                    return getCenter(areas[1]);
+                    break;
+                }
+                case EventType::ButtonLeftDown:
+                {
+                    return getCenter(areas[0]);
+                    break;
+                }
+                case EventType::ButtonRightDown:
+                {
+                    return getCenter(areas[2]);
+                    break;
                 }
                 default:
                 break;
@@ -149,22 +187,15 @@ private:
         }
     }    
 
-    Color getColorFromTouch(Point p) {
-        for (const auto& area : areas) {
-            if (p.x() >= area.x1 && p.x() <= area.x2 && p.y() >= area.y1 && p.y() <= area.y2)
-                return area.color;
-        }
-        return red;
-    }
-
     bool getUserInput() {
-        for (Color expectedColor : sequence) {
+        for (int expectedColor : sequence) {
             Point touchedPoint = handleTouch();
-            ColorArea area = areas[static_cast<int>(expectedColor)];
+            ColorArea area = areas[expectedColor];
             if (!(touchedPoint.x() >= area.x1 && touchedPoint.x() <= area.x2 && touchedPoint.y() >= area.y1 && touchedPoint.y() <= area.y2))
                 return false;
+            miosix::delayMs(100);
         }
-        sequence.push_back(static_cast<Color>(rand() % 4));
+        sequence.push_back(static_cast<int>(rand() % 4));
         return true;
     }
 
@@ -174,17 +205,21 @@ public:
         srand(static_cast<unsigned int>(time(0)));        
         unsigned short maxX = display.getWidth() - 1;
         unsigned short maxY = display.getHeight() - 1;
-        areas.push_back({red, 0, 0, static_cast<unsigned short>(maxX / 2), static_cast<unsigned short>(maxY / 2)});
-        areas.push_back({white, static_cast<unsigned short>(maxX / 2), 0, maxX, static_cast<unsigned short>(maxY / 2)});
-        areas.push_back({green, 0, static_cast<unsigned short>(maxY / 2), static_cast<unsigned short>(maxX / 2), maxY});
-        areas.push_back({blue, static_cast<unsigned short>(maxX / 2), static_cast<unsigned short>(maxY / 2), maxX, maxY});
+        areas.push_back({red, static_cast<unsigned short>(maxX / 4), 0, static_cast<unsigned short>(3* maxX / 4), static_cast<unsigned short>(maxY / 3)});
+        areas.push_back({blue, 0, static_cast<unsigned short>(maxY / 3), static_cast<unsigned short>(maxX / 2), static_cast<unsigned short>(2 * maxY / 3)});
+        areas.push_back({green, static_cast<unsigned short>(maxX / 2), static_cast<unsigned short>(maxY / 3), maxX, static_cast<unsigned short>(2 * maxY / 3)});
+        areas.push_back({white, static_cast<unsigned short>(maxX / 4), static_cast<unsigned short>(2 * maxY / 3), static_cast<unsigned short>(3* maxX / 4), maxY});
+        invalidAreas.push_back({0, 0, static_cast<unsigned short>(maxX / 4), static_cast<unsigned short>(maxY / 3)});
+        invalidAreas.push_back({static_cast<unsigned short>(3* maxX / 4), 0, maxX, static_cast<unsigned short>(maxY / 3)});
+        invalidAreas.push_back({0, static_cast<unsigned short>(2* maxY / 3), static_cast<unsigned short>(maxX / 4), maxY});
+        invalidAreas.push_back({static_cast<unsigned short>(3* maxX / 4), static_cast<unsigned short>(2* maxY / 3), maxX, maxY});
     }
 
    void run() {
         for (;;) {            
             initialMenu();
             sequence.clear();
-            sequence.push_back(static_cast<Color>(rand() % 4));
+            sequence.push_back(static_cast<int>(rand() % 4));
             
             for (;;) {
                 displaySequence();

@@ -315,7 +315,13 @@ static void eventThread(void *)
     ButtonState<EventType::ButtonDown> downButton;
     ButtonState<EventType::ButtonLeft> leftButton;
     ButtonState<EventType::ButtonRight> rightButton;
-    bool tPrev=false;
+    ButtonState<EventType::ButtonADown> aButtonDown;
+    ButtonState<EventType::ButtonJoyDown> joyButtonDown;
+    ButtonState<EventType::ButtonUpDown> upButtonDown;
+    ButtonState<EventType::ButtonDownDown> downButtonDown;
+    ButtonState<EventType::ButtonLeftDown> leftButtonDown;
+    ButtonState<EventType::ButtonRightDown> rightButtonDown;
+    bool tPrev=false, oldButtonKey = false, oldjoySel = false, oldjoyDown = false, oldjoyLeft = false, oldjoyRight = false, oldjoyUp = false ;
     Point pOld; 
     for(;;)
     {
@@ -326,6 +332,20 @@ static void eventThread(void *)
         leftButton.update(!joyLeft::value());
         rightButton.update(!joyRight::value());
         upButton.update(!joyUp::value());
+        
+        aButtonDown.update(!buttonKey::value() && buttonKey::value()!= oldButtonKey);
+        joyButtonDown.update(!joySel::value() && joySel::value()!= oldjoySel);
+        downButtonDown.update(!joyDown::value() && joyDown::value()!= oldjoyDown);
+        leftButtonDown.update(!joyLeft::value() && joyLeft::value()!= oldjoyLeft);
+        rightButtonDown.update(!joyRight::value() && joyRight::value()!= oldjoyRight);
+        upButtonDown.update(!joyUp::value() && joyUp::value()!= oldjoyUp);
+
+        oldButtonKey = buttonKey::value();
+        oldjoySel = joySel::value();
+        oldjoyDown = joyDown::value();
+        oldjoyLeft = joyLeft::value();
+        oldjoyRight = joyRight::value();
+        oldjoyUp = joyUp::value();
 
         //Check touchscreen
         Point p=touchCtrl.getTouchData();
