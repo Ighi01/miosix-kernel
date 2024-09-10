@@ -80,14 +80,17 @@ private:
         miosix::delayMs(2000);
     }
 
-    void initialMenu() {
+    void removePendingEvents(){
         for (;;) {            
             Event e = inputHandler.popEvent(); 
             if (e.getEvent() == EventType::None) {
                 break;
             }
         }
+    }
 
+    void initialMenu() {
+        removePendingEvents();
         drawAllAreas();
 
         {
@@ -135,12 +138,7 @@ private:
 
 
     Point handleTouch(){
-        for (;;) {            
-            Event e = inputHandler.popEvent(); 
-            if (e.getEvent() == EventType::None) {
-                break;
-            }
-        }  
+        removePendingEvents();
         for(;;)
         {
             Event e = inputHandler.popEvent();
